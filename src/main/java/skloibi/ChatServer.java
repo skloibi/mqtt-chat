@@ -1,8 +1,8 @@
 package skloibi;
 
 import io.vertx.mqtt.MqttServerOptions;
-import io.vertx.rxjava.core.Vertx;
-import io.vertx.rxjava.mqtt.MqttServer;
+import io.vertx.reactivex.core.Vertx;
+import io.vertx.reactivex.mqtt.MqttServer;
 import org.apache.commons.cli.*;
 import skloibi.utils.T;
 import skloibi.utils.TFunction;
@@ -102,11 +102,6 @@ public class ChatServer {
                 .endpointHandler(endpoint -> {
                     // shows main connect info
                     LOGGER.info("MQTT client [" + endpoint.clientIdentifier() + "] request to connect, clean session = " + endpoint.isCleanSession());
-
-                    Optional.ofNullable(endpoint.auth())
-                            .ifPresent(auth ->
-                                    LOGGER.info("[username = " + auth.userName() + ", password = " + auth.password() + "]")
-                            );
 
                     Optional.ofNullable(endpoint.will())
                             .ifPresent(will ->
