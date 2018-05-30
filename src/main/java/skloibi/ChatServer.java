@@ -7,6 +7,7 @@ import org.apache.commons.cli.*;
 import skloibi.utils.T;
 import skloibi.utils.TFunction;
 
+import java.io.IOException;
 import java.util.Optional;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -74,7 +75,18 @@ public class ChatServer {
 
     public static void main(String[] args) throws ParseException {
         ChatServer.init(args)
-                .map(ChatServer::start);
+                .map(ChatServer::start)
+                .map(server -> {
+                    try {
+                        System.in.read();
+                        return server.stop();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        return null;
+                    }
+                });
+
+        System.exit(0);
     }
 
     public ChatServer start() {
@@ -91,13 +103,16 @@ public class ChatServer {
                     // shows main connect info
                     LOGGER.info("MQTT client [" + endpoint.clientIdentifier() + "] request to connect, clean session = " + endpoint.isCleanSession());
 
-                    if (endpoint.auth() != null) {
-                        LOGGER.info("[username = " + endpoint.auth().userName() + ", password = " + endpoint.auth().password() + "]");
-                    }
-                    if (endpoint.will() != null) {
-                        LOGGER.info("[will topic = " + endpoint.will().willTopic() + " msg = " + endpoint.will().willMessage() +
-                                " QoS = " + endpoint.will().willQos() + " isRetain = " + endpoint.will().isWillRetain() + "]");
-                    }
+                    Optional.ofNullable(endpoint.auth())
+                            .ifPresent(auth ->
+                                    LOGGER.info("[username = " + auth.userName() + ", password = " + auth.password() + "]")
+                            );
+
+                    Optional.ofNullable(endpoint.will())
+                            .ifPresent(will ->
+                                    LOGGER.info("[will topic = " + will.willTopic() + " msg = " + will.willMessage() +
+                                            " QoS = " + will.willQos() + " isRetain = " + will.isWillRetain() + "]")
+                            );
 
                     LOGGER.info("[keep alive timeout = " + endpoint.keepAliveTimeSeconds() + "]");
 
