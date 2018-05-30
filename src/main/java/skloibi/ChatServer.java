@@ -3,6 +3,7 @@ package skloibi;
 import io.vertx.mqtt.MqttServerOptions;
 import io.vertx.reactivex.core.Vertx;
 import io.vertx.reactivex.mqtt.MqttServer;
+import io.vertx.reactivex.mqtt.MqttTopicSubscription;
 import org.apache.commons.cli.*;
 import skloibi.utils.T;
 import skloibi.utils.TFunction;
@@ -11,6 +12,7 @@ import java.io.IOException;
 import java.util.Optional;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 import static skloibi.Properties.MQTT_PORT;
 import static skloibi.Properties.SERVER_COMMAND;
@@ -110,6 +112,52 @@ public class ChatServer {
                             );
 
                     LOGGER.info("[keep alive timeout = " + endpoint.keepAliveTimeSeconds() + "]");
+
+                    endpoint.subscribeHandler(subscription -> {
+                        endpoint.subscribeAcknowledge(
+                                subscription.messageId(),
+                                subscription.topicSubscriptions().stream()
+                                        .peek(t -> {
+                                            System.out.println("subscription of topic " + t.topicName());
+                                        })
+                                        .map(MqttTopicSubscription::qualityOfService)
+                                        .collect(Collectors.toList())
+                        );
+                    });
+
+                    endpoint.publishHandler(message -> {
+
+                        System.out.println("Just received message [" + message.payload().toString() + "] with QoS [" + message.qosLevel() + "]");
+
+                        switch (message.qosLevel()) {
+                            case AT_LEAST_ONCE:
+                                endpoint.publishAcknowledge(message.messageId());
+                                break;
+                            case EXACTLY_ONCE:
+                                endpoint.publishReceived(message.messageId());
+                                break;
+                        }
+                    }).publishReleaseHandler(endpoint::publishComplete);
+
+                    endpoint
+                            .publishAcknowledgeHandler(messageId ->
+                                    System.out.println("Received ack for message = " + messageId))
+                            .publishReceivedHandler(endpoint::publishRelease)
+                            .publishCompletionHandler(messageId ->
+                                    System.out.println("Received ack for message = " + messageId));
+
+                    endpoint.disconnectHandler(__ ->
+                            System.out.println("Received disconnect from client"));
+
+                    endpoint.unsubscribeHandler(unsubscribe -> {
+
+                        unsubscribe.topics().stream()
+                                .map(t -> "Unsubscribe for " + t)
+                                .forEach(System.out::println);
+
+                        // ack the unsubscribe request
+                        endpoint.unsubscribeAcknowledge(unsubscribe.messageId());
+                    });
 
                     // accept connection from the remote client
                     endpoint.accept(false);

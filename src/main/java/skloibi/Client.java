@@ -2,15 +2,16 @@ package skloibi;
 
 import io.netty.handler.codec.mqtt.MqttQoS;
 import io.reactivex.Observable;
+import io.reactivex.schedulers.Schedulers;
 import io.vertx.mqtt.MqttClientOptions;
 import io.vertx.reactivex.core.Vertx;
 import io.vertx.reactivex.core.buffer.Buffer;
 import io.vertx.reactivex.mqtt.MqttClient;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
-import java.util.NoSuchElementException;
-import java.util.Scanner;
 import java.util.logging.Logger;
 
 public class Client {
@@ -18,49 +19,53 @@ public class Client {
     private static final Logger LOGGER = Logger.getLogger(Client.class.getName());
 
     public static void main(String[] args) {
-        final String  username = "TESTY";
-        final Scanner scanner  = new Scanner(System.in);
+        final String         username = "TESTY";
+        final BufferedReader reader   = new BufferedReader(new InputStreamReader(System.in));
 
         DateTimeFormatter formatter = DateTimeFormatter.ISO_LOCAL_TIME;
 
         Vertx vertx = Vertx.vertx();
 
         MqttClientOptions opts = new MqttClientOptions()
-                .setClientId(username);
+                .setClientId(username)
+                .setAutoKeepAlive(true);
 
         MqttClient client = MqttClient.create(vertx, opts);
 
-        client.connect(1883, "localhost", __ -> {
-            client.publishHandler(msg ->
-                    System.out.println("[" + formatter.format(Instant.now()) + "]" + msg.payload()))
-                    .subscribe(Properties.TOPIC_USER + username + "/#", 2)
-                    .subscribe(Properties.TOPIC_ALL, 2);
+        client.subscribeCompletionHandler(___ -> {
+            System.out.println("Subscribed!");
+            Observable.<String>create(sub -> {
+                final String in = reader.readLine();
 
-            Observable.<String>defer(() -> sub -> {
-                try {
-                    final String in = scanner.nextLine();
-
-                    if (in.equals("exit"))
-                        sub.onComplete();
-                    else
-                        sub.onNext(in);
-                } catch (NoSuchElementException e) {
-
-                }
+                if (in == null || in.equals("exit"))
+                    sub.onComplete();
+                else if (!in.isEmpty())
+                    sub.onNext(in);
             })
+                    .subscribeOn(Schedulers.io())
+                    .map(msg -> username + ": " + msg)
                     .map(Buffer::buffer)
-                    .blockingSubscribe(b ->
-                                    client.publish(
-                                            Properties.TOPIC_ALL,
-                                            b,
-                                            MqttQoS.EXACTLY_ONCE,
-                                            false,
-                                            false),
+                    .subscribe(b -> {
+                                LOGGER.info("MESSAGE: " + b);
+                                client.publish(
+                                        Properties.TOPIC_ALL + Properties.SEPARATOR + username,
+                                        b,
+                                        MqttQoS.EXACTLY_ONCE,
+                                        false,
+                                        false);
+                            },
                             e -> {
                                 LOGGER.severe(e.getMessage());
                                 e.printStackTrace();
                             },
                             () -> LOGGER.info("Closing connection"));
         });
+
+        client.connect(1883, "localhost", ch ->
+                client.publishHandler(msg ->
+                        System.out.println("[" + formatter.format(Instant.now()) + "]" + msg.payload()))
+                        .subscribe(Properties.TOPIC_USER + username + "/#", 2)
+                        .subscribe(Properties.TOPIC_ALL + "/#", 2)
+        );
     }
 }
