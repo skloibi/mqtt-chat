@@ -10,7 +10,7 @@ import io.vertx.reactivex.mqtt.MqttClient;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
-import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.logging.Logger;
 
@@ -22,7 +22,7 @@ public class Client {
         final String         username = "TESTY";
         final BufferedReader reader   = new BufferedReader(new InputStreamReader(System.in));
 
-        DateTimeFormatter formatter = DateTimeFormatter.ISO_LOCAL_TIME;
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("HH:mm:ss");
 
         Vertx vertx = Vertx.vertx();
 
@@ -34,7 +34,7 @@ public class Client {
 
         client.subscribeCompletionHandler(___ -> {
             System.out.println("Subscribed!");
-            Observable.<String>create(sub -> {
+            Observable.create(sub -> {
                 final String in = reader.readLine();
 
                 if (in == null || in.equals("exit"))
@@ -48,9 +48,9 @@ public class Client {
                     .subscribe(b -> {
                                 LOGGER.info("MESSAGE: " + b);
                                 client.publish(
-                                        Properties.TOPIC_ALL + Properties.SEPARATOR + username,
+                                        Properties.TOPIC_ALL,
                                         b,
-                                        MqttQoS.EXACTLY_ONCE,
+                                        MqttQoS.AT_MOST_ONCE,
                                         false,
                                         false);
                             },
@@ -63,9 +63,9 @@ public class Client {
 
         client.connect(1883, "localhost", ch ->
                 client.publishHandler(msg ->
-                        System.out.println("[" + formatter.format(Instant.now()) + "]" + msg.payload()))
-                        .subscribe(Properties.TOPIC_USER + username + "/#", 2)
-                        .subscribe(Properties.TOPIC_ALL + "/#", 2)
+                        System.out.println("[" + formatter.format(LocalDateTime.now()) + "]" + msg.payload()))
+                        .subscribe(Properties.TOPIC_USER + username, 2)
+                        .subscribe(Properties.TOPIC_ALL, 2)
         );
     }
 }

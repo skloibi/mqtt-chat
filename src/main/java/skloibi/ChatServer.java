@@ -8,7 +8,6 @@ import org.apache.commons.cli.*;
 import skloibi.utils.T;
 import skloibi.utils.TFunction;
 
-import java.io.IOException;
 import java.util.Optional;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -77,18 +76,17 @@ public class ChatServer {
 
     public static void main(String[] args) throws ParseException {
         ChatServer.init(args)
-                .map(ChatServer::start)
-                .map(server -> {
-                    try {
-                        System.in.read();
-                        return server.stop();
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                        return null;
-                    }
-                });
+                .map(ChatServer::start);
+//                .map(server -> {
+//                    try {
+//                        System.in.read();
+//                        return server.stop();
+//                    } catch (IOException e) {
+//                        e.printStackTrace();
+//                        return null;
+//                    }
+//                });
 
-        System.exit(0);
     }
 
     public ChatServer start() {
@@ -113,16 +111,23 @@ public class ChatServer {
 
                     LOGGER.info("[keep alive timeout = " + endpoint.keepAliveTimeSeconds() + "]");
 
-                    endpoint.subscribeHandler(subscription -> {
-                        endpoint.subscribeAcknowledge(
-                                subscription.messageId(),
-                                subscription.topicSubscriptions().stream()
-                                        .peek(t -> {
-                                            System.out.println("subscription of topic " + t.topicName());
-                                        })
-                                        .map(MqttTopicSubscription::qualityOfService)
-                                        .collect(Collectors.toList())
-                        );
+                    endpoint.subscribeHandler(subscription -> endpoint.subscribeAcknowledge(
+                            subscription.messageId(),
+                            subscription.topicSubscriptions().stream()
+                                    .peek(t ->
+                                            System.out.println("subscription of topic " + t.topicName()))
+                                    .map(MqttTopicSubscription::qualityOfService)
+                                    .collect(Collectors.toList())
+                    ));
+
+                    endpoint.unsubscribeHandler(unsubscribe -> {
+
+                        unsubscribe.topics().stream()
+                                .map(t -> "Unsubscribe for " + t)
+                                .forEach(System.out::println);
+
+                        // ack the unsubscribe request
+                        endpoint.unsubscribeAcknowledge(unsubscribe.messageId());
                     });
 
                     endpoint.publishHandler(message -> {
@@ -134,30 +139,30 @@ public class ChatServer {
                                 endpoint.publishAcknowledge(message.messageId());
                                 break;
                             case EXACTLY_ONCE:
-                                endpoint.publishReceived(message.messageId());
+                                endpoint.publishRelease(message.messageId());
+                                break;
+                            default:
                                 break;
                         }
+
+                        endpoint.publish(
+                                message.topicName(),
+                                message.payload(),
+                                message.qosLevel(),
+                                message.isDup(),
+                                message.isRetain()
+                        );
                     }).publishReleaseHandler(endpoint::publishComplete);
 
-                    endpoint
-                            .publishAcknowledgeHandler(messageId ->
-                                    System.out.println("Received ack for message = " + messageId))
-                            .publishReceivedHandler(endpoint::publishRelease)
-                            .publishCompletionHandler(messageId ->
-                                    System.out.println("Received ack for message = " + messageId));
+//                    endpoint
+//                            .publishAcknowledgeHandler(messageId ->
+//                                    System.out.println("Received ack for message = " + messageId))
+//                            .publishReceivedHandler(endpoint::publishRelease)
+//                            .publishCompletionHandler(messageId ->
+//                                    System.out.println("Received ack for message = " + messageId));
 
                     endpoint.disconnectHandler(__ ->
                             System.out.println("Received disconnect from client"));
-
-                    endpoint.unsubscribeHandler(unsubscribe -> {
-
-                        unsubscribe.topics().stream()
-                                .map(t -> "Unsubscribe for " + t)
-                                .forEach(System.out::println);
-
-                        // ack the unsubscribe request
-                        endpoint.unsubscribeAcknowledge(unsubscribe.messageId());
-                    });
 
                     // accept connection from the remote client
                     endpoint.accept(false);
