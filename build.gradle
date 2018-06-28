@@ -5,7 +5,9 @@ plugins {
 group 'skloibi'
 version '1.0-SNAPSHOT'
 
-sourceCompatibility = 1.9
+apply plugin: 'java'
+sourceCompatibility = 10
+targetCompatibility = 10
 
 test {
     useJUnitPlatform()
