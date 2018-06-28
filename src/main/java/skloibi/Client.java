@@ -23,7 +23,7 @@ public class Client extends AbstractVerticle {
 
     private static final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("HH:mm:ss");
 
-    private static final Logger LOGGER = Logger.getLogger(Client.class.getName());
+    private static final Logger logger = Logger.getLogger(Client.class.getName());
 
     private String username;
     private String channel;
@@ -44,15 +44,21 @@ public class Client extends AbstractVerticle {
 
         // check for commands
         if (message.startsWith(Properties.COMMAND_PREFIX)) {
-            var words = message.split("\\s");
+            var space1 = message.indexOf(' ');
+            var space2 = message.indexOf(' ', space1);
+            space2 = space2 == -1 ? message.length() : space2;
 
-            var cmd = words[0].substring(1);
+            var cmd = message.substring(1, space1);
 
             switch (cmd) {
                 case Properties.COMMAND_SWITCH:
-                    var channel = words[1];
+                    var channel = message.substring(space1 + 1, space2);
                     changeChannel(client, channel);
                     break;
+                case Properties.COMMAND_PRIVATE:
+                    var user = message.substring(space1 + 1, space2);
+                    var msg = message.substring(space2 + 1);
+                    publish(client, "user" + Properties.SEPARATOR + user, msg, Properties.QOS_MESSAGE);
                 default:
                     break;
             }
@@ -88,16 +94,16 @@ public class Client extends AbstractVerticle {
         this.channel = channel;
 
         return client.subscribe(
-                TopicParser.toAbsoluteTopic(channel) + "/#",
+                TopicParser.toAbsoluteTopic(channel) + "/+",
                 Properties.QOS_MESSAGE.value(),
                 sub -> sub
                         .map(__ -> {
-                            LOGGER.info("Switched to channel '" + channel + "'");
-                            publish(client, channel, "entered channel", Properties.QOS_SYSTEM);
+                            logger.info("Switched to channel '" + channel + "'");
+                            publish(client, channel, "/entered channel", Properties.QOS_SYSTEM);
                             return __;
                         })
                         .otherwise(e -> {
-                            LOGGER.log(Level.SEVERE, "Could not switch to channel '" + channel + "'", e);
+                            logger.log(Level.SEVERE, "Could not switch to channel '" + channel + "'", e);
                             return sub.result();
                         }));
     }
@@ -132,33 +138,31 @@ public class Client extends AbstractVerticle {
                                     gen.onComplete();
                                 else if (!in.isEmpty())
                                     gen.onNext(in);
-                                else
-                                    System.out.println("nope");
                             })
                             .subscribeOn(Schedulers.io())
                             .subscribe(
                                     msg -> handleMessage(client, msg),
-                                    e -> LOGGER.log(Level.SEVERE, "Subscription error", e),
+                                    e -> logger.log(Level.SEVERE, "Subscription error", e),
                                     () -> {
                                         publish(
                                                 client,
                                                 channel,
-                                                "left",
+                                                "/left",
                                                 Properties.QOS_SYSTEM
                                         );
-                                        LOGGER.info("Closing connection");
+                                        logger.info("Closing connection");
                                     });
 
-                    client.connect(1883, "localhost", ch -> {
+                    client.connect(Properties.MQTT_PORT, Properties.BROKER, ch -> {
                         client.publishHandler(msg -> System.out.printf(
-                                "[%s] /%-20s %-20s %s\n",
+                                "[%s] /%-5s %s: %s\n",
                                 formatter.format(LocalDateTime.now()),
                                 TopicParser.getTargetTopic(msg.topicName()),
-                                TopicParser.userFromTopic(msg.topicName()) + ":",
+                                TopicParser.userFromTopic(msg.topicName()),
                                 msg.payload())
                         )
                                 // subscribe to personal profiles
-                                .subscribe(Properties.TOPIC_USER + user, Properties.QOS_MESSAGE.value());
+                                .subscribe(Properties.TOPIC_USER + user + "/+", Properties.QOS_MESSAGE.value());
                         // subscribe to global channel
                         changeChannel(client, Properties.TOPIC_ALL);
 

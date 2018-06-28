@@ -23,6 +23,10 @@ dependencies {
     compile 'io.vertx:vertx-rx-java2:3.5.1'
     compile 'io.vertx:vertx-mqtt:3.5.1'
 
+    compile 'com.github.davidmoten:rxjava-jdbc:0.7.16'
+
+    compile 'org.postgresql:postgresql:42.2.2'
+
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.2.0'
 
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.2.0'
