@@ -9,6 +9,7 @@ import io.vertx.reactivex.core.AbstractVerticle;
 import io.vertx.reactivex.core.Vertx;
 import io.vertx.reactivex.core.buffer.Buffer;
 import io.vertx.reactivex.mqtt.MqttClient;
+import skloibi.utils.TopicParser;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -27,13 +28,9 @@ public class Client extends AbstractVerticle {
     private String username;
     private String channel;
 
-    private String topic(String channel) {
-        return Properties.TOPIC + Properties.SEPARATOR + channel;
-    }
-
     private MqttClient publish(MqttClient client, String channel, String message, MqttQoS qos) {
         return client.publish(
-                topic(channel) + Properties.SEPARATOR + username,
+                TopicParser.toAbsoluteTopic(channel) + Properties.SEPARATOR + username,
                 Buffer.buffer(message),
                 qos,
                 false,
@@ -73,29 +70,27 @@ public class Client extends AbstractVerticle {
         return client;
     }
 
-    private String usernameFromTopic(String topic) {
-        var i = topic.lastIndexOf('/');
-        return topic.substring(i + 1);
-    }
 
     private MqttClient changeChannel(MqttClient client, String channel) {
         Optional.ofNullable(this.channel)
-                .map(this::topic)
+                .map(TopicParser::toAbsoluteTopic)
                 .map(topic -> {
-                    client.unsubscribe(topic);
+                    client.unsubscribe(topic + Properties.SEPARATOR + "+");
                     return topic;
                 })
                 .ifPresent(topic -> publish(
                         client,
                         topic,
-                        username + "switched channel",
+                        "switched channel",
                         Properties.QOS_SYSTEM)
                 );
 
         this.channel = channel;
 
-        return client.subscribe(topic(channel) + "/#", Properties.QOS_MESSAGE.value(), subscription ->
-                subscription
+        return client.subscribe(
+                TopicParser.toAbsoluteTopic(channel) + "/#",
+                Properties.QOS_MESSAGE.value(),
+                sub -> sub
                         .map(__ -> {
                             LOGGER.info("Switched to channel '" + channel + "'");
                             publish(client, channel, "entered channel", Properties.QOS_SYSTEM);
@@ -103,7 +98,7 @@ public class Client extends AbstractVerticle {
                         })
                         .otherwise(e -> {
                             LOGGER.log(Level.SEVERE, "Could not switch to channel '" + channel + "'", e);
-                            return subscription.result();
+                            return sub.result();
                         }));
     }
 
@@ -120,61 +115,56 @@ public class Client extends AbstractVerticle {
                     sub.onComplete();
                 })
                 .subscribeOn(Schedulers.io())
-                .subscribe(username -> {
-                    this.username = username;
+                .subscribe(user -> {
+                    this.username = user;
 
                     var opts = new MqttClientOptions()
-                            .setClientId(username)
+                            .setClientId(user)
                             .setAutoKeepAlive(true);
 
                     var client = MqttClient.create(vertx, opts);
 
-                    client.subscribeCompletionHandler(ack -> {
-                        Observable
-                                .<String>create(sub -> {
-                                    final String in = reader.readLine();
+                    Observable
+                            .<String>generate(gen -> {
+                                final String in = reader.readLine();
 
-                                    if (in == null || in.equals("exit"))
-                                        sub.onComplete();
-                                    else if (!in.isEmpty())
-                                        sub.onNext(in);
-                                })
-                                .subscribeOn(Schedulers.io())
-                                .subscribe(
-                                        msg -> handleMessage(client, msg),
-                                        e -> LOGGER.log(Level.SEVERE, "Subscription error", e),
-                                        () -> {
-                                            publish(
-                                                    client,
-                                                    channel,
-                                                    "left",
-                                                    Properties.QOS_SYSTEM
-                                            );
-                                            LOGGER.info("Closing connection");
-                                        });
-                    });
+                                if (in == null || in.equals("exit"))
+                                    gen.onComplete();
+                                else if (!in.isEmpty())
+                                    gen.onNext(in);
+                                else
+                                    System.out.println("nope");
+                            })
+                            .subscribeOn(Schedulers.io())
+                            .subscribe(
+                                    msg -> handleMessage(client, msg),
+                                    e -> LOGGER.log(Level.SEVERE, "Subscription error", e),
+                                    () -> {
+                                        publish(
+                                                client,
+                                                channel,
+                                                "left",
+                                                Properties.QOS_SYSTEM
+                                        );
+                                        LOGGER.info("Closing connection");
+                                    });
 
                     client.connect(1883, "localhost", ch -> {
                         client.publishHandler(msg -> System.out.printf(
                                 "[%s] /%-20s %-20s %s\n",
                                 formatter.format(LocalDateTime.now()),
-                                msg.topicName(),
-                                usernameFromTopic(msg.topicName()) + ":",
+                                TopicParser.getTargetTopic(msg.topicName()),
+                                TopicParser.userFromTopic(msg.topicName()) + ":",
                                 msg.payload())
                         )
                                 // subscribe to personal profiles
-                                .subscribe(Properties.TOPIC_USER + username, Properties.QOS_MESSAGE.value());
+                                .subscribe(Properties.TOPIC_USER + user, Properties.QOS_MESSAGE.value());
                         // subscribe to global channel
                         changeChannel(client, Properties.TOPIC_ALL);
 
                         startFuture.complete();
                     });
                 });
-    }
-
-    @Override
-    public void stop(Future<Void> stopFuture) throws Exception {
-        super.stop(stopFuture);
     }
 
     public static void main(String[] args) {
