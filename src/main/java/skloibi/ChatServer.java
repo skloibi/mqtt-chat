@@ -183,7 +183,6 @@ public class ChatServer {
         return new ChatServer(port, server);
     }
 
-    // TODO invoke
     public ChatServer stop() {
         this.instance.close(result -> LOGGER.info("Shutting down chat server"));
         return new ChatServer(port);
