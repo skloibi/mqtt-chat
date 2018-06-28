@@ -9,9 +9,12 @@ import io.vertx.reactivex.core.AbstractVerticle;
 import io.vertx.reactivex.core.Vertx;
 import io.vertx.reactivex.core.buffer.Buffer;
 import io.vertx.reactivex.mqtt.MqttClient;
+import rx.Observable;
+import skloibi.utils.T;
 import skloibi.utils.TopicParser;
 
 import java.time.Instant;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -22,6 +25,7 @@ public class LogBot extends AbstractVerticle {
 
     private static final String NAME          = LogBot.class.getSimpleName();
     private static final String PUBLISH_TOPIC = TOPIC + SEPARATOR + TOPIC_ALL + SEPARATOR + NAME;
+    private static final long   INTERVAL      = 10;
 
     private static ConnectionProvider connectionProvider = new ConnectionProviderFromUrl(
             DB_URL,
@@ -63,10 +67,25 @@ public class LogBot extends AbstractVerticle {
                                 .count()
                                 .subscribe(
                                         __ -> logger.info("message saved"),
-                                        e -> logger.log(Level.SEVERE, "logging failed", e),
-                                        () -> logger.info("logging complete")
+                                        e -> logger.log(Level.SEVERE, "logging failed", e)
                                 );
                     });
+
+            Observable
+                    .interval(INTERVAL, TimeUnit.SECONDS)
+                    .subscribe(__ -> db
+                            .select("SELECT username, date :: text, message FROM messages")
+                            .autoMap(MessageLog.class)
+                            .map(MessageLog::getUsername)
+                            .groupBy(m -> m)
+                            .flatMap(group ->
+                                    group.count()
+                                            .map(count -> T.of(group.getKey(), count)))
+                            .subscribe(
+                                    p -> System.out.println(p._1 + ": " + p._2),
+                                    e -> logger.log(Level.SEVERE, "highscore query failed", e)
+                            )
+                    );
 
             startFuture.complete();
         });
