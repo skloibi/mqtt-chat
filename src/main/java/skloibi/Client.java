@@ -45,7 +45,7 @@ public class Client extends AbstractVerticle {
         // check for commands
         if (message.startsWith(Properties.COMMAND_PREFIX)) {
             var space1 = message.indexOf(' ');
-            var space2 = message.indexOf(' ', space1);
+            var space2 = message.indexOf(' ', space1 + 1);
             space2 = space2 == -1 ? message.length() : space2;
 
             var cmd = message.substring(1, space1);
@@ -98,7 +98,6 @@ public class Client extends AbstractVerticle {
                 Properties.QOS_MESSAGE.value(),
                 sub -> sub
                         .map(__ -> {
-                            logger.info("Switched to channel '" + channel + "'");
                             publish(client, channel, "/entered channel", Properties.QOS_SYSTEM);
                             return __;
                         })
