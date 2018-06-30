@@ -13,9 +13,14 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
-import static skloibi.Properties.MQTT_PORT;
-import static skloibi.Properties.SERVER_COMMAND;
+import static skloibi.props.Properties.MQTT_PORT;
+import static skloibi.props.Properties.SERVER_COMMAND;
 
+/**
+ * Possible skeleton for a future MQTT broker implementation.
+ * NOTE: This implementation currently only listens to incoming messages
+ * and does not support subscription, forwarding or other MQTT mechanics.
+ */
 public class ChatServer {
 
     private static final Logger LOGGER = Logger.getLogger(ChatServer.class.getName());
